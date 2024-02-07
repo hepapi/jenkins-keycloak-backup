@@ -1,0 +1,46 @@
+@Library("your-shared-lib@master") _
+
+pipeline {
+    triggers {
+        cron('0 0 * * *') // everyday at midnight
+    }
+    environment {
+        DEBIAN_FRONTEND = 'noninteractive'
+        TZ = 'Europe/Istanbul'
+    } 
+    agent {
+        node {
+            label 'linux'
+        }
+    }
+    stages {
+        stage('Backup and Upload to S3') {
+            steps {
+                script {
+                    echo "Starting backup and upload to S3..."
+                    KeycloakBackupAndUploadToS3(
+                        kubeconfig_credentials_id: '',
+                        cluster_name: "",
+                        label_app_kubernetes_io_instance: "",
+                        keycloak_namespace: "",
+                        aws_endpoint_url_s3: "https://obs.tr-west-1.myhuaweicloud.com", // leave empty to use the default AWS S3 endpoint
+                        s3_bucket_name: "keycloak-backup",
+                        aws_access_key_id_credential_id: 'huawei-s3-keycloak-backup-user-key-id',
+                        aws_secret_access_key_credential_id: 'huawei-s3-keycloak-backup-user-access-key'
+                    )
+                    echo "Finished backup and upload to S3..."
+                }
+            }
+        }
+    }
+    post {
+        always {
+            cleanWs() // always Clean Workspace after 
+        }
+    }
+    options {
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '30'))  // keep last N builds
+        timeout(time: 25, unit: 'MINUTES') 
+    }
+}
