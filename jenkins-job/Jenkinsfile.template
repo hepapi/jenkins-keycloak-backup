@@ -8,11 +8,7 @@ pipeline {
         DEBIAN_FRONTEND = 'noninteractive'
         TZ = 'Europe/Istanbul'
     } 
-    agent {
-        node {
-            label 'linux'
-        }
-    }
+    agent any
     stages {
         stage('Backup and Upload to S3') {
             steps {
