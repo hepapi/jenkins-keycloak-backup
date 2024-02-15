@@ -1,4 +1,4 @@
-@Library("jenkins-shared-lib@master") _
+@Library("my-shared-library@main") _
 
 pipeline {
     triggers {
