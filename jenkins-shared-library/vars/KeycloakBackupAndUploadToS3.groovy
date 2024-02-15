@@ -13,7 +13,7 @@ def call(Map options){
     env."CLUSTER_NAME" = checkKeyInMap(options, "cluster_name")   
     env."S3_BUCKET_NAME" = checkKeyInMap(options, "s3_bucket_name")    
     env."LABEL_APP_KUBERNETES_IO_INSTANCE" = checkKeyInMap(options, "label_app_kubernetes_io_instance") 
-    env."KC_NAMESPACE" = checkKeyInMap(options, "keycloak_namespace") 
+    env."KC_NAMESPACE" = checkKeyInMap(options, "keycloak-namespace") 
     def aws_access_key_id_credential_id = checkKeyInMap(options, "aws_access_key_id_credential_id") 
     def aws_secret_access_key_credential_id = checkKeyInMap(options, "aws_secret_access_key_credential_id") 
 
