@@ -15,7 +15,7 @@ pipeline {
                 script {
                     echo "Starting backup and upload to S3..."
                     KeycloakBackupAndUploadToS3(
-                        kubeconfig_credentials_id: '',
+                        kubeconfig_credentials_id: 'kubeconfig_credentials_id',
                         cluster_name: "",
                         label_app_kubernetes_io_instance: "",
                         keycloak_namespace: "keycloak-namespace",
