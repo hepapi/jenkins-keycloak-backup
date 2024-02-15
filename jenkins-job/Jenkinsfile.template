@@ -22,7 +22,7 @@ pipeline {
                         kubeconfig_credentials_id: '',
                         cluster_name: "",
                         label_app_kubernetes_io_instance: "",
-                        keycloak-namespace: "",
+                        keycloak_namespace: "keycloak-namespace",
                         aws_endpoint_url_s3: "https://s3.amazonaws.com/keycloak-backup-ersin", // leave empty to use the default AWS S3 endpoint
                         s3_bucket_name: "keycloak-backup-ersin",
                         aws_access_key_id_credential_id: 's3-keycloak-backup-user-key-id',
