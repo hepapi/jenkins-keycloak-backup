@@ -4,7 +4,7 @@
 - Jenkinsfile.template
     - calls the shared function: KeycloakBackupAndUploadToS3
 
-
+- test
 
 ## TO-DO
 - [ ] Install Keycloak bitnami on a Kubernetes cluster
