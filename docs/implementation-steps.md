@@ -18,11 +18,10 @@
 `Cloud` is the Kubernetes cluster that Jenkins will use to run the Keycloak backup job.
 
 - [ ] Go to `Manage Jenkins > Clouds`
-- ![Manage Jenkins Clouds](./assets/manage-jenkins--clouds.png)
 - [ ] Create a new Cloud for your K8s Cluster
   - [ ] Select Kubernetes
-  - [ ] Use existing kubeconfig credential
-  - ![Cloud settings](./assets/clouds--settings.png)
+  - ![Cloud settings](./assets/manage-jenkins--clouds.png)
+  - [ ] Use existing/created kubeconfig credential to create a Cloud for your cluster
 
 ## Implementation Steps
 
@@ -36,15 +35,15 @@
 
 | Parameter Name                      | About                                                                                                   |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| kubeconfig_credentials_id           | **(required)** Jenkins Credentials ID for the kubeconfig                                                |
-| cluster_name                        | **(required)** Cluster Name (used in the S3 backup folder hierarchy)                                    |
-| label_app_kubernetes_io_instance    | **(required)** Keycloak `app.kubernetes.io=` label value on the Keycloak pods                           |
-| keycloak_namespace                  | **(required)** Namespace of the keycloak instance                                                       |
-| aws_access_key_id_credential_id     | **(required)** Jenkins Credentials ID for `AWS_ACCESS_KEY_ID`                                           |
-| aws_secret_access_key_credential_id | **(required)** Jenkins Credentials ID for `AWS_SECRET_ACCESS_KEY`                                       |
-| s3_bucket_name                      | **(required)** S3 Bucket Name for backups                                                               |
-| aws_endpoint_url_s3                 | **(optional, default: `https://s3.amazonaws.com`)** S3 Endpoint URL. Keep it empty to use AWS normally. |
-| k8s_plugin_cloud_name               | **(required)** Manage Jenkins > Clouds -> Name of the cluster                                           |
+| `kubeconfig_credentials_id`           | **(required)** Jenkins Credentials ID for the kubeconfig                                                |
+| `cluster_name`                        | **(required)** Cluster Name (used in the S3 backup folder hierarchy)                                    |
+| `label_app_kubernetes_io_instance`    | **(required)** Keycloak `app.kubernetes.io=` label value on the Keycloak pods                           |
+| `keycloak_namespace`                  | **(required)** Namespace of the keycloak instance                                                       |
+| `aws_access_key_id_credential_id`     | **(required)** Jenkins Credentials ID for `AWS_ACCESS_KEY_ID`                                           |
+| `aws_secret_access_key_credential_id` | **(required)** Jenkins Credentials ID for `AWS_SECRET_ACCESS_KEY`                                       |
+| `s3_bucket_name`                      | **(required)** S3 Bucket Name for backups                                                               |
+| `aws_endpoint_url_s3`                 | **(optional, default: `https://s3.amazonaws.com`)** S3 Endpoint URL. Keep it empty to use AWS normally. |
+| `k8s_plugin_cloud_name`               | **(required)** Manage Jenkins > Clouds -> Name of the cluster                                           |
 
 #### 3.2. Create a Jenkinsfile on your repository
 
