@@ -95,7 +95,6 @@ def call(Map options){
                 echo "Successfully read the keycloak.conf file from the running container."
             }
         }
-
     }
     // Create a new pod to backup the keycloak
     podTemplate(
