@@ -1,4 +1,4 @@
-@Library("my-shared-library@main") _
+@Library("shared-lib@master") _
 
 pipeline {
     triggers {
@@ -8,21 +8,28 @@ pipeline {
         DEBIAN_FRONTEND = 'noninteractive'
         TZ = 'Europe/Istanbul'
     } 
-    agent any
+    agent {
+        node {
+            label 'linux'
+        }
+    }
     stages {
         stage('Backup and Upload to S3') {
             steps {
                 script {
                     echo "Starting backup and upload to S3..."
                     KeycloakBackupAndUploadToS3(
-                        kubeconfig_credentials_id: 'kubeconfig_credentials_id',
-                        cluster_name: "",
-                        label_app_kubernetes_io_instance: "",
-                        keycloak_namespace: "keycloak-namespace",
-                        aws_endpoint_url_s3: "https://s3.amazonaws.com/keycloak-backup-ersin", // leave empty to use the default AWS S3 endpoint
-                        s3_bucket_name: "keycloak-backup-ersin",
-                        aws_access_key_id_credential_id: 's3-keycloak-backup-user-key-id',
-                        aws_secret_access_key_credential_id: 's3-keycloak-backup-user-access-key'
+                        kubeconfig_credentials_id: '',              // Jenkins Credentials Name for the kubeconfig
+                        cluster_name: "",                           // Your cluster name (used in the S3 backup folder hierarchy)
+                        label_app_kubernetes_io_instance: "",       // Keycloak `app.kubernetes.io=` label value on the Keycloak pods
+                        keycloak_namespace: "",                     // k8s namespace   
+
+                        k8s_plugin_cloud_name: "",                  // `Jenkins:Kubernetes plugin` Cloud name for cluster access (Manage Jenkins -> Cloud )   
+
+                        aws_access_key_id_credential_id: "",        // Jenkins Credentials Name for the AWS Access Key
+                        aws_secret_access_key_credential_id: "",    // Jenkins Credentials Name for the AWS Secret  Access Key
+                        aws_endpoint_url_s3: false,                 // (optional) S3 compatible storage endpoint (e.g. Huawei Cloud OBS: `https://obs.tr-west-1.myhuaweicloud.com`)
+                        s3_bucket_name: "",                         // S3 Bucket Name for the backups
                     )
                     echo "Finished backup and upload to S3..."
                 }
@@ -37,6 +44,6 @@ pipeline {
     options {
         disableConcurrentBuilds()
         buildDiscarder(logRotator(numToKeepStr: '30'))  // keep last N builds
-        timeout(time: 25, unit: 'MINUTES') 
+        timeout(time: 45, unit: 'MINUTES') 
     }
 }

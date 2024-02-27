@@ -8,23 +8,30 @@ def checkKeyInMap(Map map, String key) {
 }
 
 def call(Map options){
-    // check if the required options are defined
+    // ------ Validate options ------ 
     def kubeconfig_credentials_id = checkKeyInMap(options, "kubeconfig_credentials_id") 
+    def aws_access_key_id_credential_id = checkKeyInMap(options, "aws_access_key_id_credential_id") 
+    def aws_secret_access_key_credential_id = checkKeyInMap(options, "aws_secret_access_key_credential_id") 
+    def k8s_plugin_cloud_name = checkKeyInMap(options, "k8s_plugin_cloud_name")
+    
     env."CLUSTER_NAME" = checkKeyInMap(options, "cluster_name")   
     env."S3_BUCKET_NAME" = checkKeyInMap(options, "s3_bucket_name")    
     env."LABEL_APP_KUBERNETES_IO_INSTANCE" = checkKeyInMap(options, "label_app_kubernetes_io_instance") 
     env."KC_NAMESPACE" = checkKeyInMap(options, "keycloak_namespace") 
-    def aws_access_key_id_credential_id = checkKeyInMap(options, "aws_access_key_id_credential_id") 
-    def aws_secret_access_key_credential_id = checkKeyInMap(options, "aws_secret_access_key_credential_id") 
-
+    
+    // check if the optional options are defined
     if (options.containsKey('aws_endpoint_url_s3') && !options.aws_endpoint_url_s3.isEmpty()) {
         env."AWS_ENDPOINT_URL_S3" = options.aws_endpoint_url_s3
+    } else {
+        // use the default AWS S3 endpoint if not provided
+        env."AWS_ENDPOINT_URL_S3" = "https://s3.amazonaws.com" 
     }
 
-    stage('Prepare Keycloak Env Vars') {
+    // ------ Pipeline Steps ------ 
+    stage('Find used Keycloak image:tag') {
         // Find the currently used keycloak image:tag
         // And use it as Jenkins Agent Docker Image in the next stages
-        // Ensuring that the same image is used for backup -- no version hassle
+        // Ensuring that the same image is used for backup -- ensuring NO version hassle
         script { 
             withCredentials([file(credentialsId: "${kubeconfig_credentials_id}", variable: 'JKUBECONF')]) {
                 echo "Querying the Keycloak image from the cluster..."
@@ -43,7 +50,28 @@ def call(Map options){
                 env."KEYCLOAK_IMAGE" = keycloak_image
             }
         }
+        // find node name
+        script { 
+            withCredentials([file(credentialsId: "${kubeconfig_credentials_id}", variable: 'JKUBECONF')]) {
+                echo "Get the Node Name from the cluster..."
+                def node_name = sh(returnStdout: true, script: """
+                    #!/bin/bash -l
+                    # find the container named keycloak in the statefulset -> get image
+                    kubectl --kubeconfig "\$JKUBECONF" -n "\$KC_NAMESPACE" \
+                        get pod -l "app.kubernetes.io/instance=\$LABEL_APP_KUBERNETES_IO_INSTANCE" -o json \
+                            | jq -r '.items[0] | .spec.nodeName'
+                """).trim()
+                if (node_name == null || node_name.isEmpty()) {
+                    error "Failed to retrieve Node Name from statefulset. Do you have enough permissions with this pipelines Service Account Kubeconfig?"
+                }
+                echo "Found Node Name: ${node_name} -- the same node will be used for backup."
+                // Save to an env variable to be used in the next stage
+                env."KEYCLOAK_RUNNING_NODE_NAME" = node_name
+            }
+        }
+    }
 
+    stage('Get Keycloak conf from pod') {
         script {  
             withCredentials([file(credentialsId: "${kubeconfig_credentials_id}", variable: 'JKUBECONF')]) {
                 // read the config file from the running keycloak container
@@ -67,46 +95,68 @@ def call(Map options){
                 echo "Successfully read the keycloak.conf file from the running container."
             }
         }
+
     }
-    // TODO: ersin
-    docker.image("${env.KEYCLOAK_IMAGE}").inside('--entrypoint "" -u root --privileged') {
-        stage('Keycloak Backup with Container') {
-            script {
-                withCredentials([
-                    string(credentialsId: aws_access_key_id_credential_id, variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: aws_secret_access_key_credential_id, variable: 'AWS_SECRET_ACCESS_KEY')
-                ]) {
-                    sh '''
+    // Create a new pod to backup the keycloak
+    podTemplate(
+        cloud: k8s_plugin_cloud_name,
+        namespace: "${env.KC_NAMESPACE}",
+        nodeSelector: "${env.KEYCLOAK_RUNNING_NODE_NAME}",
+        containers: [
+            containerTemplate(
+                name: "keycloak-backup", 
+                image: "${env.KEYCLOAK_IMAGE}", 
+                command: 'sleep', 
+                args: '1d',
+                ttyEnabled: true,
+                runAsUser: "0",    // run as root
+            ),
+        ]
+    ) {
+      node(POD_LABEL) {
+          stage('Create an Attach to Pod in K8s') {
+              container('keycloak-backup') {
+                  script {
+                    withCredentials([
+                        string(credentialsId: aws_access_key_id_credential_id, variable: 'AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: aws_secret_access_key_credential_id, variable: 'AWS_SECRET_ACCESS_KEY'),
+                    ]) {
+                      echo "Connected to backup pod in the K8s cluster. Running the backup script..."
+                      sh '''
                         #!/bin/bash
-                        echo "----------------- START of Keycloak Backup Script (in container) ----------------------"
+                        echo "-------- START of Keycloak Backup Script (in container) --------"
                         export _KEYCLOAK_HOME="/opt/bitnami/keycloak"
                         export _KEYCLOAK_BACKUP_DIR="keycloak-auto-backups"
                         export _KEYCLOAK_BACKUP_ZIP_FILENAME="keycloak-auto-backups.tar"
-
 
                         {
                             echo "Copying the keycloak.conf file..."
                             set +x;  # disable printing commands
 
-                            # dont print the config file to the console
                             echo "\$CONFIG_FILE_FOR_KEYCLOAK" > /opt/bitnami/keycloak/conf/keycloak.conf 
-                            
+
                             set -x;  # enable printing commands
-                            
+
                             # Manually configure the cache to be local
                             sed -i '/^cache-config-file/d' /opt/bitnami/keycloak/conf/keycloak.conf
                             sed -i '/^cache-stack/d' /opt/bitnami/keycloak/conf/keycloak.conf
                             sed -i '/^cache =/s/.*/cache = local/' /opt/bitnami/keycloak/conf/keycloak.conf
                         }
 
+                        # printenv
                         # \$_KEYCLOAK_HOME/bin/kc.sh show-config
 
+                        echo "Building keycloak before export..."
+                        \$_KEYCLOAK_HOME/bin/kc.sh build   # this is important otherwise we get 
+
+                        \$_KEYCLOAK_HOME/bin/kc.sh show-config
+                        
                         echo "Running keycloak export command..."
                         \$_KEYCLOAK_HOME/bin/kc.sh export \
                             --users=different_files \
                             --dir=\$_KEYCLOAK_BACKUP_DIR \
                             --users-per-file=200 
-                        
+
                         exportStatus=$?
                         if [ $exportStatus -eq 0 ]; then
                             echo "Keycloak Export finished successfully"
@@ -117,19 +167,17 @@ def call(Map options){
 
                         echo "Listing backup dir: \$_KEYCLOAK_BACKUP_DIR"
                         ls -alh \$_KEYCLOAK_BACKUP_DIR
-                        echo "Zipping backup directory..." 
-                        {
-                            # using a block as we change the working directory
+
+                        (
+                            # use a subshell as we change the working directory, we'll return the same place after this block
+                            echo "Zipping backup directory: \$_KEYCLOAK_BACKUP_DIR." 
                             cd \$_KEYCLOAK_BACKUP_DIR || { echo "Can't cd into \$_KEYCLOAK_BACKUP_DIR. Exiting."; exit 1; };
-                            pwd
                             ls -alh
                             tar -czvf ../\$_KEYCLOAK_BACKUP_ZIP_FILENAME . || { echo "Can't tar archive \$_KEYCLOAK_BACKUP_DIR. Exiting."; exit 1; };
-                            cd ..
-                        }
-                        
-                        echo "Succesfully zipped backup directory to \$_KEYCLOAK_BACKUP_ZIP_FILENAME"
+                        )
 
-                        {
+                        echo "Succesfully zipped backup directory to \$_KEYCLOAK_BACKUP_ZIP_FILENAME"
+                        (
                             if ! command -v aws &> /dev/null
                             then
                                 echo "AWS CLI not found. Installing..."
@@ -143,7 +191,7 @@ def call(Map options){
                             else
                                 echo "AWS CLI is already installed."
                             fi
-                        }
+                        )
 
                         echo "AWS CLI is configured to upload the endpoint: \${AWS_ENDPOINT_URL_S3:-'https://s3.amazonaws.com'}"
                         ls -alh keycloak-auto-backups.tar
@@ -156,10 +204,12 @@ def call(Map options){
 
                         echo "Backup directory zipped to \$_KEYCLOAK_BACKUP_ZIP_FILENAME"
                         echo "Backup completed successfully. Exiting."
-                        echo "----------------- END of Keycloak Backup Script (in container) ----------------------"
-                    '''
+                        echo "-------- END of Keycloak Backup Script (in container) --------"
+                      '''
+                    }
                 }
-            }
-        }
-    } 
-}
+              }
+          }
+      }
+  }
+} // end of call()
